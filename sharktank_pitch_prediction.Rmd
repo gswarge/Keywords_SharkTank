@@ -1,0 +1,154 @@
+---
+title: "Shark Tank Database | Deal Prediction"
+author: "Gaurang Swarge"
+date: "13/10/2019"
+output: html_document
+---
+## Sharktank Database
+1.	A dataset of Shark Tank episodes is being used. It contains the details of the episode and description of entrepreneurs making their pitch to the VC sharks. 
+2.	We will ONLY use “Description” column for this text mining exercise.
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(rpart)
+library(rpart.plot)
+library(randomForest)
+library(tm)
+library(SnowballC)
+library(wordcloud)
+
+sharktank <- read.csv("~/MEGA/Personal/My_Projects/DS_Projects/SharkTank/Shark_Tank_Companies.csv",stringsAsFactors = FALSE)
+
+dim(sharktank)
+head(sharktank)
+View(sharktank)
+
+#Creating Dependent variable | deal as factor variable
+sharktank$deal <- as.factor(sharktank$deal)
+
+str(sharktank)
+
+```
+3.	Step 1:
+a.	Extract the text into text corpus and perform following operations:
+i.	Create DTM
+ii.	Use “Deal” as a Dependent Variable
+iii.	Use CART model and arrive at your CART diagram
+iv.	Build Logistic Regression Model and find out your accuracy of the model
+v.	Build randomForst model and arrive at your varImpPlot
+
+```{r rf1}
+#Create Corpus
+varCorpus = Corpus(VectorSource(sharktank$description))
+# Convert to lower-case
+varCorpus = tm_map(varCorpus, tolower)
+varCorpus = tm_map(varCorpus,removePunctuation)
+stopwords("english")[1:10]
+varCorpus = tm_map(varCorpus,removeWords,stopwords("english"))
+varCorpus = tm_map(varCorpus,stripWhitespace)
+varCorpus = tm_map(varCorpus,stemDocument)
+wordcloud(varCorpus,colors=rainbow(15),max.words = 150)
+head(varCorpus)
+varfreq = DocumentTermMatrix(varCorpus)
+dim(varfreq)
+varfreq
+#Look at the matrix
+inspect(varfreq[490:495,505:515])
+
+#Check for Sparsity
+findFreqTerms(varfreq,lowfreq = 20)
+
+#Remove sparse Terms
+varsparse=removeSparseTerms(varfreq,0.995)
+
+#convert to a Data Frame
+descSparse = as.data.frame(as.matrix(varsparse))
+
+head(descSparse)
+# Make all variable names R-friendly
+# R does not likes words starting with number
+
+colnames(descSparse) = make.names(colnames(descSparse))
+
+#Adding deal as Dependent Variable
+descSparse$deal = sharktank$deal
+#Get no of deals
+table(descSparse$deal)
+
+#Using Cart algorithm
+descCart = rpart(deal~.,data=descSparse,method="class")
+
+```
+
+### Plotting Cart
+
+<b>Explanation:</b>
+Shape < 0.5 means that word Shape doesnt appear, Shape >0.5 means that Shape as the word appears in the Description,which means that  10 out of 10 deals are negative, when the word Shape appears
+
+```{r cart}
+#plot the cart
+prp(descCart,extra=2)
+# Extra=2 gives you the tree with numbers
+
+```
+
+### Logisting Regression
+
+Running a Logistic Regression Model
+
+```{r logReg}
+sharktankLR = glm(deal~.,data=sharktank,family="binomial")
+
+# ., means take all the columns in the dataset
+
+#Step 3 - Finding Accuracy
+
+sharktankPred = predict(sharktankLR,data = sharktank,type = "response")
+
+# type = response gives you probabilities
+
+# Confusion Matrix
+table(sharktank$deal,sharktankPred > 0.5)
+
+#Accuracy of the model
+#False False + True True / all four
+(244 + 251) / (0 + 0 + 244 + 251)
+
+```
+
+### Building Random Forest
+
+
+
+```{r rf1}
+# Interpreting Results
+set.seed(123)
+sharktankRF <- randomForest(deal~.,data=descSparse)
+varImpPlot(sharktankRF)
+
+```
+
+
+```{r ratio}
+#Adding Ratio Variable into descSparse
+descSparse$ratio = sharktank$askedFor/sharktank$valuation
+
+#Rerun the models to see if there are any changes
+#SharktankCartRatio
+#predictCARTRatio = predict(SharktankCartRatio, data=descSparse, type ="class")
+set.seed(123)
+
+SaRatio = glm(deal~., data = descSparse)
+predictLogistic = predict(SaRatio, data = descSparse)
+LogRatio <- table(descSparse$deal, predictLogistic > 0.5)
+
+#Accuracy of the model
+#False False + True True / all four
+(244+250) / (0+1+244+250)
+> LogRatio 
+
+
+```
+
